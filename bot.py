@@ -15,7 +15,7 @@ def keep_alive():
     t.start()
 
 # --- CONFIGURAÇÃO ---
-TOKEN = 'MTQ2ODE2ODU3NDQ1NDcyNjc1MA.GS1Hwc.tQ1T4ce_1urP4geXebqu-jF_Suzr-JPALcvDbc'
+TOKEN = 'MTQ2ODE2ODU3NDQ1NDcyNjc1MA.GLMBy4.JPBaLO7H51aDF8ki6jolz-ubxCtIkJikOjH0Hg'
 COR_ROXA = 0x8e44ad 
 
 intents = discord.Intents.default()
