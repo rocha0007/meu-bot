@@ -29,7 +29,6 @@ def carregar_dados():
 def salvar_dados(dados):
     with open('stats.json', 'w') as f: json.dump(dados, f)
 
-# ATENÇÃO: Ativando todas as permissões necessárias
 intents = discord.Intents.all() 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -52,17 +51,18 @@ class QueueView(View):
 
     def atualizar_embed(self):
         fila = queues.get(self.modalidade, [])
-        # MARCAÇÃO COM @: Agora usando p.mention
         nomes = "\n".join([f"👤 {p.mention}" for p in fila]) if fila else "Fila vazia..."
         embed = discord.Embed(title=f"🕹️ Fila: {self.modalidade}", color=COR_ROXA)
-        embed.description = f"Aguardando jogadores para iniciar.\n\n**Jogadores ({len(fila)})**\n{nomes}\n\nUIBAI APOSTAS"
+        embed.description = f"Aguardando jogadores...\n\n**Jogadores ({len(fila)})**\n{nomes}\n\nUIBAI APOSTAS"
         return embed
 
     @discord.ui.button(label="Entrar na Fila", style=discord.ButtonStyle.green)
     async def entrar(self, interaction, button):
         if self.modalidade not in queues: queues[self.modalidade] = []
+        
+        # Permite que qualquer um entre (Dono ou Membro)
         if interaction.user in queues[self.modalidade]:
-            return await interaction.response.send_message("Você já está na fila!", ephemeral=True)
+            return await interaction.response.send_message("Você já está nesta fila!", ephemeral=True)
         
         queues[self.modalidade].append(interaction.user)
         
@@ -70,25 +70,24 @@ class QueueView(View):
             p1 = queues[self.modalidade].pop(0)
             p2 = queues[self.modalidade].pop(0)
             
-            # ADMs e Bot sempre veem os canais
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 p1: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 p2: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
             }
-            # Garante que cargos ADM vejam a sala
+            # Adms veem tudo para resolver bugs
             for role in interaction.guild.roles:
                 if role.permissions.administrator:
                     overwrites[role] = discord.PermissionOverwrite(read_messages=True)
 
-            channel = await interaction.guild.create_text_channel(
-                name=f"🏆-{self.modalidade.replace(' ', '-')}", 
-                overwrites=overwrites
-            )
+            channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
             await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
-            await interaction.response.send_message(f"✅ Sala criada: {channel.mention}", ephemeral=False)
+            
+            # Responde confirmando a criação da sala
+            await interaction.response.send_message(f"✅ Sala criada: {channel.mention}", ephemeral=True)
         else:
+            # Apenas edita a mensagem atual, sem criar nova
             await interaction.response.edit_message(embed=self.atualizar_embed())
 
     @discord.ui.button(label="Sair da Fila", style=discord.ButtonStyle.red)
@@ -96,29 +95,28 @@ class QueueView(View):
         if self.modalidade in queues and interaction.user in queues[self.modalidade]:
             queues[self.modalidade].remove(interaction.user)
             await interaction.response.edit_message(embed=self.atualizar_embed())
+        else:
+            await interaction.response.send_message("Você não está na fila.", ephemeral=True)
 
-# --- EVENTOS E COMANDOS ---
+# --- COMANDOS ---
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-
-    # Detectar números para copiar ID (ex: 8282828 \n 10)
     linhas = message.content.split('\n')
     if len(linhas) >= 2 and linhas[0].strip().isdigit():
         embed = discord.Embed(title="📋 Copiar ID", description=f"```\n{linhas[0]}\n```", color=COR_ROXA)
         await message.channel.send(embed=embed)
-
     await bot.process_commands(message)
 
 @bot.command()
 async def p(ctx, member: discord.Member = None):
     member = member or ctx.author
     dados = carregar_dados()
-    user_data = dados.get(str(member.id), {"v": 0, "d": 0, "k": 0})
+    u = dados.get(str(member.id), {"v": 0, "d": 0, "k": 0})
     embed = discord.Embed(title=f"👤 Perfil: {member.name}", color=COR_ROXA)
-    embed.add_field(name="Vitórias 🏆", value=user_data["v"])
-    embed.add_field(name="Derrotas 💀", value=user_data["d"])
-    embed.add_field(name="Kills 🎯", value=user_data["k"])
+    embed.add_field(name="Vitórias 🏆", value=u["v"])
+    embed.add_field(name="Derrotas 💀", value=u["d"])
+    embed.add_field(name="Kills 🎯", value=u["k"])
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -141,34 +139,27 @@ async def winner(ctx):
                 return await ctx.send(f"🏆 {vencedor.mention} venceu!")
 
 @bot.command()
-async def rk(ctx): await ctx.send("🎯 Ranking de Kills em breve!")
-
-@bot.command()
-async def rv(ctx): await ctx.send("🏆 Ranking de Vitórias em breve!")
-
-@bot.command()
 async def painel(ctx):
-    class Menu(View):
+    class SelectMenu(View):
+        def __init__(self):
+            super().__init__(timeout=None)
+        
         @discord.ui.select(placeholder="Escolha a modalidade...", options=[
             discord.SelectOption(label="1x1 MOB 📱", value="1x1 MOB"),
             discord.SelectOption(label="2x2 MOB 📱", value="2x2 MOB"),
-            discord.SelectOption(label="3x3 MOB 📱", value="3x3 MOB"),
             discord.SelectOption(label="4x4 MOB 📱", value="4x4 MOB"),
-            discord.SelectOption(label="2x2 MISTO 1 EMU 📱🖥️", value="2x2 MISTO 1 EMU"),
-            discord.SelectOption(label="3X3 MISTO 1 EMU 📱🖥️", value="3X3 MISTO 1 EMU"),
-            discord.SelectOption(label="4X4 MISTO 1 EMU 📱🖥️", value="4X4 MISTO 1 EMU"),
-            discord.SelectOption(label="3X3 MISTO 2 EMU 📱🖥️", value="3X3 MISTO 2 EMU"),
-            discord.SelectOption(label="4X4 MISTO 3 EMU 📱🖥️", value="4X4 MISTO 3 EMU"),
-            discord.SelectOption(label="1X1 EMU 🖥️", value="1X1 EMU"),
-            discord.SelectOption(label="2X2 EMU 🖥️", value="2X2 EMU"),
-            discord.SelectOption(label="3X3 EMU 🖥️", value="3X3 EMU"),
-            discord.SelectOption(label="4X4 EMU 🖥️", value="4X4 EMU")
+            discord.SelectOption(label="1x1 EMU 🖥️", value="1x1 EMU"),
+            discord.SelectOption(label="2x2 EMU 🖥️", value="2x2 EMU"),
+            discord.SelectOption(label="4x4 EMU 🖥️", value="4x4 EMU"),
+            discord.SelectOption(label="2x2 MISTO 📱🖥️", value="2x2 MISTO"),
+            discord.SelectOption(label="4x4 MISTO 📱🖥️", value="4x4 MISTO")
         ])
         async def callback(self, interaction, select):
-            v = QueueView(select.values[0])
-            await interaction.response.send_message(embed=v.atualizar_embed(), view=v)
+            # Envia a fila como mensagem visível para todos
+            view = QueueView(select.values[0])
+            await interaction.response.send_message(embed=view.atualizar_embed(), view=view)
 
-    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=Menu())
+    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=SelectMenu())
 
 @bot.event
 async def on_ready(): print(f'✅ Bot Online!')
