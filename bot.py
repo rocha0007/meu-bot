@@ -31,7 +31,7 @@ def salvar_dados(dados):
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents, case_insensitive=True)
 
-# --- BOTÕES DE SALA ---
+# --- COMPONENTES DE INTERFACE ---
 class CopyIDView(View):
     def __init__(self, text):
         super().__init__(timeout=None)
@@ -47,9 +47,9 @@ class CloseView(View):
     async def close(self, interaction, button):
         await interaction.response.send_message("Limpando sala em 5s...")
         await asyncio.sleep(5)
-        await interaction.channel.delete()
+        try: await interaction.channel.delete()
+        except: pass
 
-# --- SISTEMA DE FILA ---
 class QueueView(View):
     def __init__(self, modalidade):
         super().__init__(timeout=None)
@@ -70,4 +70,60 @@ class QueueView(View):
         
         queues[self.modalidade].append(interaction.user.id)
         
-        if len(queues[self.modalidade]) >=
+        if len(queues[self.modalidade]) >= 2:
+            p1_id = queues[self.modalidade].pop(0)
+            p2_id = queues[self.modalidade].pop(0)
+            p1 = await bot.fetch_user(p1_id)
+            p2 = await bot.fetch_user(p2_id)
+            
+            overwrites = {
+                interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                p1: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                p2: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
+            }
+            for role in interaction.guild.roles:
+                if role.permissions.administrator:
+                    overwrites[role] = discord.PermissionOverwrite(read_messages=True)
+
+            channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
+            await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
+            await interaction.response.edit_message(embed=self.gerar_embed(), view=self)
+        else:
+            await interaction.response.edit_message(embed=self.gerar_embed(), view=self)
+
+    @discord.ui.button(label="Sair da Fila", style=discord.ButtonStyle.red)
+    async def sair(self, interaction, button):
+        if self.modalidade in queues and interaction.user.id in queues[self.modalidade]:
+            queues[self.modalidade].remove(interaction.user.id)
+            await interaction.response.edit_message(embed=self.gerar_embed(), view=self)
+        else:
+            await interaction.response.send_message("Você não está na fila!", ephemeral=True)
+
+# --- EVENTOS E COMANDOS ---
+@bot.event
+async def on_message(message):
+    if message.author.bot: return
+    linhas = message.content.split('\n')
+    if len(linhas) >= 2 and linhas[0].strip().isdigit():
+        id_sala = linhas[0].strip()
+        senha_sala = linhas[1].strip()
+        embed = discord.Embed(title="🎮 DADOS DA SALA", color=COR_ROXA)
+        embed.description = f"**ID:** `{id_sala}`\n**SENHA:** `{senha_sala}`"
+        try: await message.delete()
+        except: pass
+        await message.channel.send(embed=embed, view=CopyIDView(id_sala))
+    await bot.process_commands(message)
+
+@bot.command()
+async def painel(ctx):
+    class SelectMenu(View):
+        @discord.ui.select(placeholder="Escolha a modalidade...", options=[
+            discord.SelectOption(label="1x1 MOB 📱", value="1x1 MOB"),
+            discord.SelectOption(label="2x2 MOB 📱", value="2x2 MOB"),
+            discord.SelectOption(label="3x3 MOB 📱", value="3x3 MOB"),
+            discord.SelectOption(label="4x4 MOB 📱", value="4x4 MOB"),
+            discord.SelectOption(label="2x2 MISTO 1 EMU 📱🖥️", value="2x2 MISTO 1 EMU"),
+            discord.SelectOption(label="3X3 MISTO 1 EMU 📱🖥️", value="3X3 MISTO 1 EMU"),
+            discord.SelectOption(label="4X4 MISTO 1 EMU 📱🖥️", value="4X4 MISTO 1 EMU"),
+            discord.SelectOption(label="3X3 MISTO 2 EMU 📱
