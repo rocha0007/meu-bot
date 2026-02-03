@@ -26,12 +26,13 @@ def carregar_dados():
     except: return {}
 
 def salvar_dados(dados):
-    with open('stats.json', 'w') as f: json.dump(dados, f)
+    with open('stats.json', 'w') as f:
+        json.dump(dados, f) # CORREÇÃO: Parêntese fechado aqui (Linha 33)
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents, case_insensitive=True)
 
-# --- COMPONENTES DE INTERFACE ---
+# --- BOTÕES E INTERFACE ---
 class CopyIDView(View):
     def __init__(self, text):
         super().__init__(timeout=None)
@@ -50,6 +51,7 @@ class CloseView(View):
         try: await interaction.channel.delete()
         except: pass
 
+# --- FILA ---
 class QueueView(View):
     def __init__(self, modalidade):
         super().__init__(timeout=None)
@@ -73,8 +75,7 @@ class QueueView(View):
         if len(queues[self.modalidade]) >= 2:
             p1_id = queues[self.modalidade].pop(0)
             p2_id = queues[self.modalidade].pop(0)
-            p1 = await bot.fetch_user(p1_id)
-            p2 = await bot.fetch_user(p2_id)
+            p1, p2 = await bot.fetch_user(p1_id), await bot.fetch_user(p2_id)
             
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -82,25 +83,21 @@ class QueueView(View):
                 p2: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
             }
-            for role in interaction.guild.roles:
-                if role.permissions.administrator:
-                    overwrites[role] = discord.PermissionOverwrite(read_messages=True)
-
             channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
             await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
-            await interaction.response.edit_message(embed=self.gerar_embed(), view=self)
+            await interaction.response.edit_message(embed=self.gerar_embed())
         else:
-            await interaction.response.edit_message(embed=self.gerar_embed(), view=self)
+            await interaction.response.edit_message(embed=self.gerar_embed())
 
     @discord.ui.button(label="Sair da Fila", style=discord.ButtonStyle.red)
     async def sair(self, interaction, button):
         if self.modalidade in queues and interaction.user.id in queues[self.modalidade]:
             queues[self.modalidade].remove(interaction.user.id)
-            await interaction.response.edit_message(embed=self.gerar_embed(), view=self)
+            await interaction.response.edit_message(embed=self.gerar_embed())
         else:
             await interaction.response.send_message("Você não está na fila!", ephemeral=True)
 
-# --- EVENTOS E COMANDOS ---
+# --- COMANDOS ---
 @bot.event
 async def on_message(message):
     if message.author.bot: return
@@ -126,4 +123,74 @@ async def painel(ctx):
             discord.SelectOption(label="2x2 MISTO 1 EMU 📱🖥️", value="2x2 MISTO 1 EMU"),
             discord.SelectOption(label="3X3 MISTO 1 EMU 📱🖥️", value="3X3 MISTO 1 EMU"),
             discord.SelectOption(label="4X4 MISTO 1 EMU 📱🖥️", value="4X4 MISTO 1 EMU"),
-            discord.SelectOption(label="3X3 MISTO 2 EMU 📱
+            discord.SelectOption(label="3X3 MISTO 2 EMU 📱🖥️", value="3X3 MISTO 2 EMU"),
+            discord.SelectOption(label="4X4 MISTO 3 EMU 📱🖥️", value="4X4 MISTO 3 EMU"),
+            discord.SelectOption(label="1X1 EMU 🖥️", value="1X1 EMU"),
+            discord.SelectOption(label="2X2 EMU 🖥️", value="2X2 EMU"),
+            discord.SelectOption(label="3X3 EMU 🖥️", value="3X3 EMU"),
+            discord.SelectOption(label="4X4 EMU 🖥️", value="4X4 EMU")
+        ])
+        async def callback(self, interaction, select):
+            view = QueueView(select.values[0])
+            await interaction.response.send_message(embed=view.gerar_embed(), view=view, ephemeral=True)
+    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=SelectMenu())
+
+@bot.command()
+async def winner(ctx):
+    if "🏆" not in ctx.channel.name: return
+    dados, vencedor = carregar_dados(), ctx.author
+    async for msg in ctx.channel.history(oldest_first=True, limit=10):
+        if "vs" in msg.content and msg.author == bot.user:
+            jogadores = msg.mentions
+            if len(jogadores) < 2: return
+            perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
+            
+            if ctx.channel.id in md3_control:
+                status = md3_control[ctx.channel.id]
+                status[vencedor.id] = status.get(vencedor.id, 0) + 1
+                v_w, p_w = status[vencedor.id], status.get(perdedor.id, 0)
+                embed = discord.Embed(title="📊 PLACAR MD3", color=COR_ROXA)
+                embed.description = f"{vencedor.mention}: **{v_w} Win**\n{perdedor.mention}: **{p_w} Win**"
+                await ctx.send(embed=embed)
+                if v_w >= 2:
+                    d_v, d_p = dados.get(str(vencedor.id), {"v":0,"d":0}), dados.get(str(perdedor.id), {"v":0,"d":0})
+                    d_v["v"] += 1; d_p["d"] += 1
+                    dados[str(vencedor.id)], dados[str(perdedor.id)] = d_v, d_p
+                    salvar_dados(dados)
+                    del md3_control[ctx.channel.id]
+                    await ctx.send("🏆 MD3 Finalizada!", view=CloseView())
+                return
+
+            d_v, d_p = dados.get(str(vencedor.id), {"v":0,"d":0}), dados.get(str(perdedor.id), {"v":0,"d":0})
+            d_v["v"] += 1; d_p["d"] += 1
+            dados[str(vencedor.id)], dados[str(perdedor.id)] = d_v, d_p
+            salvar_dados(dados)
+            await ctx.send(f"🏆 {vencedor.mention} venceu!", view=CloseView())
+            break
+
+@bot.command()
+async def md3(ctx):
+    if "🏆" not in ctx.channel.name: return
+    async for msg in ctx.channel.history(oldest_first=True, limit=5):
+        if "vs" in msg.content and msg.author == bot.user:
+            jogadores = msg.mentions
+            if len(jogadores) >= 2:
+                md3_control[ctx.channel.id] = {jogadores[0].id: 0, jogadores[1].id: 0}
+                await ctx.send(f"⚔️ **MD3 Iniciada!**")
+                return
+
+@bot.command()
+async def p(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    u = carregar_dados().get(str(member.id), {"v": 0, "d": 0})
+    embed = discord.Embed(title=f"👤 Perfil: {member.name}", color=COR_ROXA)
+    embed.add_field(name="Vitórias 🏆", value=u["v"])
+    embed.add_field(name="Derrotas 💀", value=u["d"])
+    await ctx.send(embed=embed)
+
+@bot.event
+async def on_ready(): print(f'✅ Bot Online!')
+
+if __name__ == "__main__":
+    keep_alive()
+    bot.run(TOKEN)
