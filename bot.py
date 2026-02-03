@@ -145,7 +145,7 @@ async def winner(ctx):
             if len(jogadores) < 2: return
             perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
             
-            # --- ATUALIZAÇÃO DO PERFIL (Sempre que der !winner) ---
+            # ATUALIZAÇÃO DO PERFIL IMEDIATA
             d_v = dados.get(str(vencedor.id), {"v":0,"d":0})
             d_p = dados.get(str(perdedor.id), {"v":0,"d":0})
             d_v["v"] += 1
@@ -153,7 +153,6 @@ async def winner(ctx):
             dados[str(vencedor.id)], dados[str(perdedor.id)] = d_v, d_p
             salvar_dados(dados)
 
-            # --- LÓGICA MD3 ---
             if ctx.channel.id in md3_control:
                 status = md3_control[ctx.channel.id]
                 status[vencedor.id] = status.get(vencedor.id, 0) + 1
@@ -164,12 +163,11 @@ async def winner(ctx):
                 await ctx.send(embed=embed)
                 
                 if v_w >= 2:
-                    await ctx.send(f"🏆 {vencedor.mention} atingiu 2 Wins e encerrou a MD3!", view=CloseView())
+                    await ctx.send(f"🏆 {vencedor.mention} venceu a MD3!", view=CloseView())
                     del md3_control[ctx.channel.id]
                 return
 
-            # Se não for MD3, apenas finaliza
-            await ctx.send(f"🏆 {vencedor.mention} venceu a partida!", view=CloseView())
+            await ctx.send(f"🏆 {vencedor.mention} venceu!", view=CloseView())
             break
 
 @bot.command()
@@ -180,7 +178,7 @@ async def md3(ctx):
             jogadores = msg.mentions
             if len(jogadores) >= 2:
                 md3_control[ctx.channel.id] = {jogadores[0].id: 0, jogadores[1].id: 0}
-                await ctx.send(f"⚔️ **MD3 Iniciada!**\nCada !winner contará uma vitória no perfil e um ponto aqui.")
+                await ctx.send(f"⚔️ **MD3 Iniciada!**")
                 return
 
 @bot.command()
