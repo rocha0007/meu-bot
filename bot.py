@@ -5,6 +5,7 @@ import os
 from flask import Flask
 from threading import Thread
 import json
+import asyncio
 
 # --- KEEP ALIVE ---
 app = Flask('')
@@ -28,9 +29,8 @@ def carregar_dados():
 def salvar_dados(dados):
     with open('stats.json', 'w') as f: json.dump(dados, f)
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
+# ATENÇÃO: Ativando todas as permissões necessárias
+intents = discord.Intents.all() 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- BOTÃO PARA FECHAR CHAT ---
@@ -41,7 +41,7 @@ class CloseView(View):
     @discord.ui.button(label="Fechar Partida", style=discord.ButtonStyle.grey, emoji="🔒")
     async def close(self, interaction, button):
         await interaction.response.send_message("Este canal será excluído em 5 segundos...")
-        await discord.utils.sleep_until(discord.utils.utcnow() + discord.timedelta(seconds=5))
+        await asyncio.sleep(5)
         await interaction.channel.delete()
 
 # --- SISTEMA DE FILA ---
@@ -52,7 +52,7 @@ class QueueView(View):
 
     def atualizar_embed(self):
         fila = queues.get(self.modalidade, [])
-        # ALTERAÇÃO: Agora usa o .mention para marcar o usuário na lista
+        # MARCAÇÃO COM @: Agora usando p.mention
         nomes = "\n".join([f"👤 {p.mention}" for p in fila]) if fila else "Fila vazia..."
         embed = discord.Embed(title=f"🕹️ Fila: {self.modalidade}", color=COR_ROXA)
         embed.description = f"Aguardando jogadores para iniciar.\n\n**Jogadores ({len(fila)})**\n{nomes}\n\nUIBAI APOSTAS"
@@ -61,7 +61,8 @@ class QueueView(View):
     @discord.ui.button(label="Entrar na Fila", style=discord.ButtonStyle.green)
     async def entrar(self, interaction, button):
         if self.modalidade not in queues: queues[self.modalidade] = []
-        if interaction.user in queues[self.modalidade]: return
+        if interaction.user in queues[self.modalidade]:
+            return await interaction.response.send_message("Você já está na fila!", ephemeral=True)
         
         queues[self.modalidade].append(interaction.user)
         
@@ -69,19 +70,23 @@ class QueueView(View):
             p1 = queues[self.modalidade].pop(0)
             p2 = queues[self.modalidade].pop(0)
             
+            # ADMs e Bot sempre veem os canais
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 p1: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 p2: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
             }
-            # Permissão para ADMs verem o chat privado
+            # Garante que cargos ADM vejam a sala
             for role in interaction.guild.roles:
                 if role.permissions.administrator:
                     overwrites[role] = discord.PermissionOverwrite(read_messages=True)
 
-            channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
-            await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}\n\nBoa sorte!", view=CloseView())
+            channel = await interaction.guild.create_text_channel(
+                name=f"🏆-{self.modalidade.replace(' ', '-')}", 
+                overwrites=overwrites
+            )
+            await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
             await interaction.response.send_message(f"✅ Sala criada: {channel.mention}", ephemeral=False)
         else:
             await interaction.response.edit_message(embed=self.atualizar_embed())
@@ -97,7 +102,7 @@ class QueueView(View):
 async def on_message(message):
     if message.author.bot: return
 
-    # Detectar números para copiar ID
+    # Detectar números para copiar ID (ex: 8282828 \n 10)
     linhas = message.content.split('\n')
     if len(linhas) >= 2 and linhas[0].strip().isdigit():
         embed = discord.Embed(title="📋 Copiar ID", description=f"```\n{linhas[0]}\n```", color=COR_ROXA)
@@ -110,7 +115,6 @@ async def p(ctx, member: discord.Member = None):
     member = member or ctx.author
     dados = carregar_dados()
     user_data = dados.get(str(member.id), {"v": 0, "d": 0, "k": 0})
-    
     embed = discord.Embed(title=f"👤 Perfil: {member.name}", color=COR_ROXA)
     embed.add_field(name="Vitórias 🏆", value=user_data["v"])
     embed.add_field(name="Derrotas 💀", value=user_data["d"])
@@ -119,30 +123,28 @@ async def p(ctx, member: discord.Member = None):
 
 @bot.command()
 async def winner(ctx):
-    # Lógica de vencedor: +1 vitória para quem usa, +1 derrota para o outro na sala
-    if "🏆" not in ctx.channel.name and "aposta" not in ctx.channel.name: return
-    
+    if "🏆" not in ctx.channel.name: return
     dados = carregar_dados()
     vencedor = ctx.author
-    
     async for msg in ctx.channel.history(oldest_first=True, limit=5):
         if "vs" in msg.content and msg.author == bot.user:
             jogadores = msg.mentions
             if len(jogadores) >= 2:
                 perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
-                
-                # Atualiza Vencedor
                 d_v = dados.get(str(vencedor.id), {"v": 0, "d": 0, "k": 0})
                 d_v["v"] += 1
                 dados[str(vencedor.id)] = d_v
-                
-                # Atualiza Perdedor
                 d_p = dados.get(str(perdedor.id), {"v": 0, "d": 0, "k": 0})
                 d_p["d"] += 1
                 dados[str(perdedor.id)] = d_p
-                
                 salvar_dados(dados)
-                return await ctx.send(f"🏆 {vencedor.mention} venceu a partida e ganhou +1 vitória! {perdedor.mention} recebeu +1 derrota.")
+                return await ctx.send(f"🏆 {vencedor.mention} venceu!")
+
+@bot.command()
+async def rk(ctx): await ctx.send("🎯 Ranking de Kills em breve!")
+
+@bot.command()
+async def rv(ctx): await ctx.send("🏆 Ranking de Vitórias em breve!")
 
 @bot.command()
 async def painel(ctx):
@@ -164,12 +166,12 @@ async def painel(ctx):
         ])
         async def callback(self, interaction, select):
             v = QueueView(select.values[0])
-            await interaction.response.send_message(embed=v.atualizar_embed(), view=v, ephemeral=False)
+            await interaction.response.send_message(embed=v.atualizar_embed(), view=v)
 
-    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", description="Selecione a modalidade abaixo:", color=COR_ROXA), view=Menu())
+    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=Menu())
 
 @bot.event
-async def on_ready(): print(f'✅ UIBAI APOSTAS ONLINE!')
+async def on_ready(): print(f'✅ Bot Online!')
 
 if __name__ == "__main__":
     keep_alive()
