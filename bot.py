@@ -15,7 +15,7 @@ def keep_alive():
     t.start()
 
 # --- CONFIGURAÇÃO ---
- TOKEN = os.getenv('DISCORD_TOKEN')
+TOKEN = os.getenv('DISCORD_TOKEN')
 COR_ROXA = 0x8e44ad 
 
 intents = discord.Intents.default()
