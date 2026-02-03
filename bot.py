@@ -20,7 +20,6 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 COR_ROXA = 0x8e44ad
 queues = {}
 
-# Simulação de banco de dados para o comando !p
 def carregar_dados():
     try:
         with open('stats.json', 'r') as f: return json.load(f)
@@ -53,9 +52,10 @@ class QueueView(View):
 
     def atualizar_embed(self):
         fila = queues.get(self.modalidade, [])
-        nomes = "\n".join([f"👤 {p.name}" for p in fila]) if fila else "Fila vazia..."
+        # ALTERAÇÃO: Agora usa o .mention para marcar o usuário na lista
+        nomes = "\n".join([f"👤 {p.mention}" for p in fila]) if fila else "Fila vazia..."
         embed = discord.Embed(title=f"🕹️ Fila: {self.modalidade}", color=COR_ROXA)
-        embed.description = f"**Jogadores ({len(fila)})**\n{nomes}"
+        embed.description = f"Aguardando jogadores para iniciar.\n\n**Jogadores ({len(fila)})**\n{nomes}\n\nUIBAI APOSTAS"
         return embed
 
     @discord.ui.button(label="Entrar na Fila", style=discord.ButtonStyle.green)
@@ -69,32 +69,37 @@ class QueueView(View):
             p1 = queues[self.modalidade].pop(0)
             p2 = queues[self.modalidade].pop(0)
             
-            # ADMs e Bot sempre veem os canais
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 p1: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 p2: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                 interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
             }
-            # Adiciona permissão para quem tem cargo de Administrador
+            # Permissão para ADMs verem o chat privado
             for role in interaction.guild.roles:
                 if role.permissions.administrator:
                     overwrites[role] = discord.PermissionOverwrite(read_messages=True)
 
-            channel = await interaction.guild.create_text_channel(name=f"🏆-partida-{self.modalidade}", overwrites=overwrites)
-            await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
+            channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
+            await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}\n\nBoa sorte!", view=CloseView())
             await interaction.response.send_message(f"✅ Sala criada: {channel.mention}", ephemeral=False)
         else:
             await interaction.response.edit_message(embed=self.atualizar_embed())
 
-# --- EVENTOS E COMANDOS SOLICITADOS ---
+    @discord.ui.button(label="Sair da Fila", style=discord.ButtonStyle.red)
+    async def sair(self, interaction, button):
+        if self.modalidade in queues and interaction.user in queues[self.modalidade]:
+            queues[self.modalidade].remove(interaction.user)
+            await interaction.response.edit_message(embed=self.atualizar_embed())
+
+# --- EVENTOS E COMANDOS ---
 @bot.event
 async def on_message(message):
     if message.author.bot: return
 
-    # 1. Detectar números para copiar ID
+    # Detectar números para copiar ID
     linhas = message.content.split('\n')
-    if len(linhas) >= 2 and linhas[0].isdigit():
+    if len(linhas) >= 2 and linhas[0].strip().isdigit():
         embed = discord.Embed(title="📋 Copiar ID", description=f"```\n{linhas[0]}\n```", color=COR_ROXA)
         await message.channel.send(embed=embed)
 
@@ -114,29 +119,30 @@ async def p(ctx, member: discord.Member = None):
 
 @bot.command()
 async def winner(ctx):
-    # Lógica de vencedor (quem usa ganha vitória, o outro derrota)
-    if "partida" not in ctx.channel.name: return
+    # Lógica de vencedor: +1 vitória para quem usa, +1 derrota para o outro na sala
+    if "🏆" not in ctx.channel.name and "aposta" not in ctx.channel.name: return
     
     dados = carregar_dados()
     vencedor = ctx.author
-    # Tenta achar o outro jogador mencionado na sala
-    async for msg in ctx.channel.history(oldest_first=True, limit=1):
-        jogadores = msg.mentions
-        if len(jogadores) >= 2:
-            perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
-            
-            # Atualiza Vencedor
-            d_v = dados.get(str(vencedor.id), {"v": 0, "d": 0, "k": 0})
-            d_v["v"] += 1
-            dados[str(vencedor.id)] = d_v
-            
-            # Atualiza Perdedor
-            d_p = dados.get(str(perdedor.id), {"v": 0, "d": 0, "k": 0})
-            d_p["d"] += 1
-            dados[str(perdedor.id)] = d_p
-            
-            salvar_dados(dados)
-            await ctx.send(f"🏆 {vencedor.mention} venceu a partida!")
+    
+    async for msg in ctx.channel.history(oldest_first=True, limit=5):
+        if "vs" in msg.content and msg.author == bot.user:
+            jogadores = msg.mentions
+            if len(jogadores) >= 2:
+                perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
+                
+                # Atualiza Vencedor
+                d_v = dados.get(str(vencedor.id), {"v": 0, "d": 0, "k": 0})
+                d_v["v"] += 1
+                dados[str(vencedor.id)] = d_v
+                
+                # Atualiza Perdedor
+                d_p = dados.get(str(perdedor.id), {"v": 0, "d": 0, "k": 0})
+                d_p["d"] += 1
+                dados[str(perdedor.id)] = d_p
+                
+                salvar_dados(dados)
+                return await ctx.send(f"🏆 {vencedor.mention} venceu a partida e ganhou +1 vitória! {perdedor.mention} recebeu +1 derrota.")
 
 @bot.command()
 async def painel(ctx):
@@ -160,10 +166,10 @@ async def painel(ctx):
             v = QueueView(select.values[0])
             await interaction.response.send_message(embed=v.atualizar_embed(), view=v, ephemeral=False)
 
-    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=Menu())
+    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", description="Selecione a modalidade abaixo:", color=COR_ROXA), view=Menu())
 
 @bot.event
-async def on_ready(): print(f'✅ Bot Online!')
+async def on_ready(): print(f'✅ UIBAI APOSTAS ONLINE!')
 
 if __name__ == "__main__":
     keep_alive()
