@@ -138,49 +138,61 @@ async def painel(ctx):
 @bot.command()
 async def winner(ctx):
     if "🏆" not in ctx.channel.name: return
-    
     def check(m): return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
-    
     await ctx.send("Quantas kills você fez nesta partida?")
     try:
         msg = await bot.wait_for('message', check=check, timeout=30.0)
         kills_partida = int(msg.content)
     except:
         kills_partida = 0
-
     dados, vencedor = carregar_dados(), ctx.author
     async for msg_hist in ctx.channel.history(oldest_first=True, limit=10):
         if "vs" in msg_hist.content and msg_hist.author == bot.user:
             jogadores = msg_hist.mentions
             if len(jogadores) < 2: return
             perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
-            
             d_v = dados.get(str(vencedor.id), {"v":0,"d":0,"k":0})
             d_p = dados.get(str(perdedor.id), {"v":0,"d":0,"k":0})
-            
             d_v["v"] += 1
             d_v["k"] = d_v.get("k", 0) + kills_partida
             d_p["d"] += 1
-            
             dados[str(vencedor.id)], dados[str(perdedor.id)] = d_v, d_p
             salvar_dados(dados)
-
             if ctx.channel.id in md3_control:
                 status = md3_control[ctx.channel.id]
                 status[vencedor.id] = status.get(vencedor.id, 0) + 1
                 v_w, p_w = status[vencedor.id], status.get(perdedor.id, 0)
-                
                 embed = discord.Embed(title="📊 PLACAR MD3", color=COR_ROXA)
                 embed.description = f"{vencedor.mention}: **{v_w} Win**\n{perdedor.mention}: **{p_w} Win**"
                 await ctx.send(embed=embed)
-                
                 if v_w >= 2:
                     await ctx.send(f"🏆 {vencedor.mention} venceu a MD3!", view=CloseView())
                     del md3_control[ctx.channel.id]
                 return
-
             await ctx.send(f"🏆 {vencedor.mention} venceu com {kills_partida} kills!", view=CloseView())
             break
+
+@bot.command(aliases=['set'])
+@commands.has_permissions(administrator=True)
+async def setstats(ctx, member: discord.Member, tipo: str, valor: int):
+    dados = carregar_dados()
+    user_id = str(member.id)
+    if user_id not in dados: dados[user_id] = {"v": 0, "d": 0, "k": 0}
+    
+    if tipo.lower() in ['v', 'vitoria', 'vitórias']:
+        dados[user_id]['v'] = valor
+        txt = "Vitórias"
+    elif tipo.lower() in ['d', 'derrota', 'derrotas']:
+        dados[user_id]['d'] = valor
+        txt = "Derrotas"
+    elif tipo.lower() in ['k', 'kill', 'kills']:
+        dados[user_id]['k'] = valor
+        txt = "Kills"
+    else:
+        return await ctx.send("Tipo inválido! Use: `v`, `d` ou `k`.")
+    
+    salvar_dados(dados)
+    await ctx.send(f"✅ {txt} de {member.mention} alteradas para **{valor}**.")
 
 @bot.command()
 async def rv(ctx):
