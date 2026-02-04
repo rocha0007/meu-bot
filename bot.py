@@ -189,8 +189,6 @@ async def setstats(ctx, member: discord.Member, tipo: str, valor: int):
     else: return await ctx.send("Use: v, d ou k.")
     salvar_dados(dados)
     await ctx.send(f"✅ {label} de {member.mention} setadas para **{valor}**.")
-    log_ch = discord.utils.get(ctx.guild.channels, name="logs-admin")
-    if log_ch: await log_ch.send(f"🛡️ **Admin:** {ctx.author.mention} alterou {label} de {member.mention} para {valor}.")
 
 @bot.command()
 async def rv(ctx):
@@ -213,17 +211,6 @@ async def rk(ctx):
     for i, (uid, s) in enumerate(rk): d += f"{m[i]} <@{uid}> — **{s.get('k', 0)} Kills**\n"
     emb.description = d if d else "Vazio."
     await ctx.send(embed=emb)
-
-@bot.command()
-async def md3(ctx):
-    if "🏆" not in ctx.channel.name: return
-    async for msg in ctx.channel.history(oldest_first=True, limit=5):
-        if "vs" in msg.content and msg.author == bot.user:
-            m = msg.mentions
-            if len(m) >= 2:
-                md3_control[ctx.channel.id] = {m[0].id: 0, m[1].id: 0}
-                await ctx.send("⚔️ **MD3 Iniciada!**")
-                return
 
 @bot.command()
 async def p(ctx, member: discord.Member = None):
