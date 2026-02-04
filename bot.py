@@ -51,7 +51,7 @@ class CloseView(View):
         try: await interaction.channel.delete()
         except: pass
 
-# --- SISTEMA DE FILA ---
+# --- SISTEMA DE FILA PRIVADA ---
 class QueueView(View):
     def __init__(self, modalidade):
         super().__init__(timeout=None)
@@ -85,7 +85,8 @@ class QueueView(View):
             }
             channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
             await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
-            await interaction.response.edit_message(embed=self.gerar_embed())
+            # Quando a partida inicia, removemos a mensagem efêmera
+            await interaction.response.edit_message(content="✅ Partida criada! Verifique os canais.", embed=None, view=None)
         else:
             await interaction.response.edit_message(embed=self.gerar_embed())
 
@@ -130,8 +131,10 @@ async def painel(ctx):
         ])
         async def callback(self, interaction, select):
             view = QueueView(select.values[0])
-            await interaction.response.send_message(embed=view.gerar_embed(), view=view)
-    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=SelectMenu())
+            # AQUI ESTÁ A MUDANÇA: ephemeral=True (Só a pessoa vê)
+            await interaction.response.send_message(embed=view.gerar_embed(), view=view, ephemeral=True)
+    
+    await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA, description="Selecione abaixo para entrar na fila:"), view=SelectMenu())
 
 @bot.command()
 async def winner(ctx):
