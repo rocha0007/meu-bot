@@ -194,10 +194,10 @@ async def setstats(ctx, member: discord.Member, tipo: str, valor: int):
 async def rv(ctx):
     dados = carregar_dados()
     if not dados: return await ctx.send("Sem dados.")
-    rk = sorted(dados.items(), key=lambda i: i[1].get('v', 0), reverse=True)[:3]
-    emb = discord.Embed(title="🏆 TOP 3 - VITÓRIAS", color=COR_ROXA)
+    rk_list = sorted(dados.items(), key=lambda i: i[1].get('v', 0), reverse=True)[:3]
+    emb = discord.Embed(title="🏆 TOP 3 - RANK DE VITÓRIAS", color=COR_ROXA)
     m, d = ["🥇", "🥈", "🥉"], ""
-    for i, (uid, s) in enumerate(rk): d += f"{m[i]} <@{uid}> — **{s.get('v', 0)} Vitórias**\n"
+    for i, (uid, s) in enumerate(rk_list): d += f"{m[i]} <@{uid}> — **{s.get('v', 0)} Vitórias**\n"
     emb.description = d if d else "Vazio."
     await ctx.send(embed=emb)
 
@@ -205,10 +205,10 @@ async def rv(ctx):
 async def rk(ctx):
     dados = carregar_dados()
     if not dados: return await ctx.send("Sem dados.")
-    rk = sorted(dados.items(), key=lambda i: i[1].get('k', 0), reverse=True)[:3]
-    emb = discord.Embed(title="🎯 TOP 3 - KILLS", color=COR_ROXA)
+    rk_list = sorted(dados.items(), key=lambda i: i[1].get('k', 0), reverse=True)[:3]
+    emb = discord.Embed(title="🎯 TOP 3 - RANK DE KILLS", color=COR_ROXA)
     m, d = ["🥇", "🥈", "🥉"], ""
-    for i, (uid, s) in enumerate(rk): d += f"{m[i]} <@{uid}> — **{s.get('k', 0)} Kills**\n"
+    for i, (uid, s) in enumerate(rk_list): d += f"{m[i]} <@{uid}> — **{s.get('k', 0)} Kills**\n"
     emb.description = d if d else "Vazio."
     await ctx.send(embed=emb)
 
