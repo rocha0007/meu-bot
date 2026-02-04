@@ -138,17 +138,30 @@ async def painel(ctx):
 @bot.command()
 async def winner(ctx):
     if "🏆" not in ctx.channel.name: return
+    
+    def check(m): return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit()
+    
+    await ctx.send("Quantas kills você fez nesta partida?")
+    try:
+        msg = await bot.wait_for('message', check=check, timeout=30.0)
+        kills_partida = int(msg.content)
+    except:
+        kills_partida = 0
+
     dados, vencedor = carregar_dados(), ctx.author
-    async for msg in ctx.channel.history(oldest_first=True, limit=10):
-        if "vs" in msg.content and msg.author == bot.user:
-            jogadores = msg.mentions
+    async for msg_hist in ctx.channel.history(oldest_first=True, limit=10):
+        if "vs" in msg_hist.content and msg_hist.author == bot.user:
+            jogadores = msg_hist.mentions
             if len(jogadores) < 2: return
             perdedor = jogadores[1] if jogadores[0] == vencedor else jogadores[0]
             
-            d_v = dados.get(str(vencedor.id), {"v":0,"d":0})
-            d_p = dados.get(str(perdedor.id), {"v":0,"d":0})
+            d_v = dados.get(str(vencedor.id), {"v":0,"d":0,"k":0})
+            d_p = dados.get(str(perdedor.id), {"v":0,"d":0,"k":0})
+            
             d_v["v"] += 1
+            d_v["k"] = d_v.get("k", 0) + kills_partida
             d_p["d"] += 1
+            
             dados[str(vencedor.id)], dados[str(perdedor.id)] = d_v, d_p
             salvar_dados(dados)
 
@@ -166,7 +179,7 @@ async def winner(ctx):
                     del md3_control[ctx.channel.id]
                 return
 
-            await ctx.send(f"🏆 {vencedor.mention} venceu!", view=CloseView())
+            await ctx.send(f"🏆 {vencedor.mention} venceu com {kills_partida} kills!", view=CloseView())
             break
 
 @bot.command()
@@ -179,6 +192,19 @@ async def rv(ctx):
     medalhas, desc = ["🥇", "🥈", "🥉"], ""
     for i, (user_id, stats) in enumerate(top_3):
         desc += f"{medalhas[i]} <@{user_id}> — **{stats.get('v', 0)} Vitórias**\n"
+    embed.description = desc if desc else "Ranking vazio."
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def rk(ctx):
+    dados = carregar_dados()
+    if not dados: return await ctx.send("Sem dados registrados.")
+    ranking = sorted(dados.items(), key=lambda item: item[1].get('k', 0), reverse=True)
+    top_3 = ranking[:3]
+    embed = discord.Embed(title="🎯 TOP 3 - RANK DE KILLS", color=COR_ROXA)
+    medalhas, desc = ["🥇", "🥈", "🥉"], ""
+    for i, (user_id, stats) in enumerate(top_3):
+        desc += f"{medalhas[i]} <@{user_id}> — **{stats.get('k', 0)} Kills**\n"
     embed.description = desc if desc else "Ranking vazio."
     await ctx.send(embed=embed)
 
@@ -196,10 +222,11 @@ async def md3(ctx):
 @bot.command()
 async def p(ctx, member: discord.Member = None):
     member = member or ctx.author
-    u = carregar_dados().get(str(member.id), {"v": 0, "d": 0})
+    u = carregar_dados().get(str(member.id), {"v": 0, "d": 0, "k": 0})
     embed = discord.Embed(title=f"👤 Perfil: {member.name}", color=COR_ROXA)
-    embed.add_field(name="Vitórias 🏆", value=u["v"])
-    embed.add_field(name="Derrotas 💀", value=u["d"])
+    embed.add_field(name="Vitórias 🏆", value=u.get("v", 0))
+    embed.add_field(name="Derrotas 💀", value=u.get("d", 0))
+    embed.add_field(name="Kills 🎯", value=u.get("k", 0))
     await ctx.send(embed=embed)
 
 @bot.event
