@@ -123,8 +123,6 @@ async def painel(ctx):
             discord.SelectOption(label="2x2 MISTO 1 EMU 📱🖥️", value="2x2 MISTO 1 EMU"),
             discord.SelectOption(label="3X3 MISTO 1 EMU 📱🖥️", value="3X3 MISTO 1 EMU"),
             discord.SelectOption(label="4X4 MISTO 1 EMU 📱🖥️", value="4X4 MISTO 1 EMU"),
-            discord.SelectOption(label="3X3 MISTO 2 EMU 📱🖥️", value="3X3 MISTO 2 EMU"),
-            discord.SelectOption(label="4X4 MISTO 3 EMU 📱🖥️", value="4X4 MISTO 3 EMU"),
             discord.SelectOption(label="1X1 EMU 🖥️", value="1X1 EMU"),
             discord.SelectOption(label="2X2 EMU 🖥️", value="2X2 EMU"),
             discord.SelectOption(label="3X3 EMU 🖥️", value="3X3 EMU"),
@@ -176,70 +174,66 @@ async def winner(ctx):
 @commands.has_permissions(administrator=True)
 async def setstats(ctx, member: discord.Member, tipo: str, valor: int):
     dados = carregar_dados()
-    user_id = str(member.id)
-    if user_id not in dados: dados[user_id] = {"v": 0, "d": 0, "k": 0}
-    
-    if tipo.lower() in ['v', 'vitoria', 'vitórias']:
-        dados[user_id]['v'] = valor
-        txt = "Vitórias"
-    elif tipo.lower() in ['d', 'derrota', 'derrotas']:
-        dados[user_id]['d'] = valor
-        txt = "Derrotas"
-    elif tipo.lower() in ['k', 'kill', 'kills']:
-        dados[user_id]['k'] = valor
-        txt = "Kills"
-    else:
-        return await ctx.send("Tipo inválido! Use: `v`, `d` ou `k`.")
-    
+    uid = str(member.id)
+    if uid not in dados: dados[uid] = {"v": 0, "d": 0, "k": 0}
+    t = tipo.lower()
+    if t in ['v', 'vitoria']: 
+        dados[uid]['v'] = valor
+        label = "Vitórias"
+    elif t in ['d', 'derrota']: 
+        dados[uid]['d'] = valor
+        label = "Derrotas"
+    elif t in ['k', 'kill']: 
+        dados[uid]['k'] = valor
+        label = "Kills"
+    else: return await ctx.send("Use: v, d ou k.")
     salvar_dados(dados)
-    await ctx.send(f"✅ {txt} de {member.mention} alteradas para **{valor}**.")
+    await ctx.send(f"✅ {label} de {member.mention} setadas para **{valor}**.")
+    log_ch = discord.utils.get(ctx.guild.channels, name="logs-admin")
+    if log_ch: await log_ch.send(f"🛡️ **Admin:** {ctx.author.mention} alterou {label} de {member.mention} para {valor}.")
 
 @bot.command()
 async def rv(ctx):
     dados = carregar_dados()
-    if not dados: return await ctx.send("Sem dados registrados.")
-    ranking = sorted(dados.items(), key=lambda item: item[1].get('v', 0), reverse=True)
-    top_3 = ranking[:3]
-    embed = discord.Embed(title="🏆 TOP 3 - RANK DE VITÓRIAS", color=COR_ROXA)
-    medalhas, desc = ["🥇", "🥈", "🥉"], ""
-    for i, (user_id, stats) in enumerate(top_3):
-        desc += f"{medalhas[i]} <@{user_id}> — **{stats.get('v', 0)} Vitórias**\n"
-    embed.description = desc if desc else "Ranking vazio."
-    await ctx.send(embed=embed)
+    if not dados: return await ctx.send("Sem dados.")
+    rk = sorted(dados.items(), key=lambda i: i[1].get('v', 0), reverse=True)[:3]
+    emb = discord.Embed(title="🏆 TOP 3 - VITÓRIAS", color=COR_ROXA)
+    m, d = ["🥇", "🥈", "🥉"], ""
+    for i, (uid, s) in enumerate(rk): d += f"{m[i]} <@{uid}> — **{s.get('v', 0)} Vitórias**\n"
+    emb.description = d if d else "Vazio."
+    await ctx.send(embed=emb)
 
 @bot.command()
 async def rk(ctx):
     dados = carregar_dados()
-    if not dados: return await ctx.send("Sem dados registrados.")
-    ranking = sorted(dados.items(), key=lambda item: item[1].get('k', 0), reverse=True)
-    top_3 = ranking[:3]
-    embed = discord.Embed(title="🎯 TOP 3 - RANK DE KILLS", color=COR_ROXA)
-    medalhas, desc = ["🥇", "🥈", "🥉"], ""
-    for i, (user_id, stats) in enumerate(top_3):
-        desc += f"{medalhas[i]} <@{user_id}> — **{stats.get('k', 0)} Kills**\n"
-    embed.description = desc if desc else "Ranking vazio."
-    await ctx.send(embed=embed)
+    if not dados: return await ctx.send("Sem dados.")
+    rk = sorted(dados.items(), key=lambda i: i[1].get('k', 0), reverse=True)[:3]
+    emb = discord.Embed(title="🎯 TOP 3 - KILLS", color=COR_ROXA)
+    m, d = ["🥇", "🥈", "🥉"], ""
+    for i, (uid, s) in enumerate(rk): d += f"{m[i]} <@{uid}> — **{s.get('k', 0)} Kills**\n"
+    emb.description = d if d else "Vazio."
+    await ctx.send(embed=emb)
 
 @bot.command()
 async def md3(ctx):
     if "🏆" not in ctx.channel.name: return
     async for msg in ctx.channel.history(oldest_first=True, limit=5):
         if "vs" in msg.content and msg.author == bot.user:
-            jogadores = msg.mentions
-            if len(jogadores) >= 2:
-                md3_control[ctx.channel.id] = {jogadores[0].id: 0, jogadores[1].id: 0}
-                await ctx.send(f"⚔️ **MD3 Iniciada!**")
+            m = msg.mentions
+            if len(m) >= 2:
+                md3_control[ctx.channel.id] = {m[0].id: 0, m[1].id: 0}
+                await ctx.send("⚔️ **MD3 Iniciada!**")
                 return
 
 @bot.command()
 async def p(ctx, member: discord.Member = None):
-    member = member or ctx.author
-    u = carregar_dados().get(str(member.id), {"v": 0, "d": 0, "k": 0})
-    embed = discord.Embed(title=f"👤 Perfil: {member.name}", color=COR_ROXA)
-    embed.add_field(name="Vitórias 🏆", value=u.get("v", 0))
-    embed.add_field(name="Derrotas 💀", value=u.get("d", 0))
-    embed.add_field(name="Kills 🎯", value=u.get("k", 0))
-    await ctx.send(embed=embed)
+    m = member or ctx.author
+    u = carregar_dados().get(str(m.id), {"v": 0, "d": 0, "k": 0})
+    emb = discord.Embed(title=f"👤 Perfil: {m.name}", color=COR_ROXA)
+    emb.add_field(name="Vitórias 🏆", value=u.get("v", 0))
+    emb.add_field(name="Derrotas 💀", value=u.get("d", 0))
+    emb.add_field(name="Kills 🎯", value=u.get("k", 0))
+    await ctx.send(embed=emb)
 
 @bot.event
 async def on_ready(): print(f'✅ Bot Online!')
