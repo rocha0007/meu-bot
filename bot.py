@@ -85,7 +85,6 @@ class QueueView(View):
             }
             channel = await interaction.guild.create_text_channel(name=f"🏆-{self.modalidade.replace(' ', '-')}", overwrites=overwrites)
             await channel.send(f"🎮 **Partida Iniciada!**\n{p1.mention} vs {p2.mention}", view=CloseView())
-            # Resposta pública para atualização da fila
             await interaction.response.edit_message(embed=self.gerar_embed())
         else:
             await interaction.response.edit_message(embed=self.gerar_embed())
@@ -133,7 +132,6 @@ async def painel(ctx):
         ])
         async def callback(self, interaction, select):
             view = QueueView(select.values[0])
-            # REMOVIDO ephemeral=True para que todos vejam a fila
             await interaction.response.send_message(embed=view.gerar_embed(), view=view)
     await ctx.send(embed=discord.Embed(title="🏆 UIBAI APOSTAS", color=COR_ROXA), view=SelectMenu())
 
@@ -174,23 +172,14 @@ async def winner(ctx):
 @bot.command()
 async def rv(ctx):
     dados = carregar_dados()
-    if not dados:
-        return await ctx.send("Ainda não há dados de vitórias registrados.")
-    
-    # Ordena os jogadores por vitórias (v) de forma decrescente
+    if not dados: return await ctx.send("Sem dados registrados.")
     ranking = sorted(dados.items(), key=lambda item: item[1].get('v', 0), reverse=True)
     top_3 = ranking[:3]
-    
     embed = discord.Embed(title="🏆 TOP 3 - RANK DE VITÓRIAS", color=COR_ROXA)
-    medalhas = ["🥇", "🥈", "🥉"]
-    
-    desc = ""
+    medalhas, desc = ["🥇", "🥈", "🥉"], ""
     for i, (user_id, stats) in enumerate(top_3):
-        vitorias = stats.get('v', 0)
-        desc += f"{medalhas[i]} <@{user_id}> — **{vitorias} Vitórias**\n"
-    
-    embed.description = desc if desc else "Nenhum jogador no ranking ainda."
-    embed.set_footer(text="UIBAI APOSTAS - Acompanhe seu progresso com !p")
+        desc += f"{medalhas[i]} <@{user_id}> — **{stats.get('v', 0)} Vitórias**\n"
+    embed.description = desc if desc else "Ranking vazio."
     await ctx.send(embed=embed)
 
 @bot.command()
